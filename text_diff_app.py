@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import difflib
 import json
 import csv
@@ -149,6 +150,117 @@ def _word_diff(old_line: str, new_line: str) -> str:
     return "~ " + " ".join(parts)
 
 
+def _word_diff_side(old_line: str, new_line: str, side: str) -> str:
+    """Word-level diff for side-by-side view. Returns HTML for one side."""
+    old_words = old_line.split()
+    new_words = new_line.split()
+    sm = difflib.SequenceMatcher(None, old_words, new_words)
+    parts = []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag == "equal":
+            parts.append(_escape(" ".join(old_words[i1:i2])))
+        elif tag == "replace":
+            if side == "left":
+                parts.append(f'<span class="hl-del">{_escape(" ".join(old_words[i1:i2]))}</span>')
+            else:
+                parts.append(f'<span class="hl-add">{_escape(" ".join(new_words[j1:j2]))}</span>')
+        elif tag == "delete":
+            if side == "left":
+                parts.append(f'<span class="hl-del">{_escape(" ".join(old_words[i1:i2]))}</span>')
+        elif tag == "insert":
+            if side == "right":
+                parts.append(f'<span class="hl-add">{_escape(" ".join(new_words[j1:j2]))}</span>')
+    return " ".join(parts)
+
+
+def render_side_by_side(text_a: str, text_b: str) -> str:
+    """Render a dual-pane side-by-side diff with word-level highlights and scroll sync."""
+    lines_a = text_a.splitlines()
+    lines_b = text_b.splitlines()
+    matcher = difflib.SequenceMatcher(None, lines_a, lines_b)
+
+    left_rows = []
+    right_rows = []
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            for i in range(i2 - i1):
+                left_rows.append(f'<div class="row eq">{_escape(lines_a[i1 + i])}</div>')
+                right_rows.append(f'<div class="row eq">{_escape(lines_b[j1 + i])}</div>')
+        elif tag == "replace":
+            max_len = max(i2 - i1, j2 - j1)
+            for i in range(max_len):
+                old_line = lines_a[i1 + i] if i1 + i < i2 else ""
+                new_line = lines_b[j1 + i] if j1 + i < j2 else ""
+                left_html = _word_diff_side(old_line, new_line, "left") if old_line else "&nbsp;"
+                right_html = _word_diff_side(old_line, new_line, "right") if new_line else "&nbsp;"
+                cls_l = "row chg" if old_line else "row blank"
+                cls_r = "row chg" if new_line else "row blank"
+                left_rows.append(f'<div class="{cls_l}">{left_html}</div>')
+                right_rows.append(f'<div class="{cls_r}">{right_html}</div>')
+        elif tag == "delete":
+            for i in range(i2 - i1):
+                left_rows.append(f'<div class="row del">{_escape(lines_a[i1 + i])}</div>')
+                right_rows.append(f'<div class="row blank">&nbsp;</div>')
+        elif tag == "insert":
+            for i in range(j2 - j1):
+                left_rows.append(f'<div class="row blank">&nbsp;</div>')
+                right_rows.append(f'<div class="row add">{_escape(lines_b[j1 + i])}</div>')
+
+    left_html = "\n".join(left_rows)
+    right_html = "\n".join(right_rows)
+
+    return f"""
+    <html><head><style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: 'Courier New', monospace; font-size: 13px; }}
+        .wrapper {{ display: flex; gap: 4px; height: 500px; }}
+        .pane-label {{ font-weight: bold; padding: 6px 10px; background: #f0f2f6;
+                       border-radius: 6px 6px 0 0; font-size: 12px; color: #555; }}
+        .pane-col {{ flex: 1; display: flex; flex-direction: column; min-width: 0; }}
+        .pane {{ flex: 1; overflow-y: auto; border: 1px solid #ddd; border-radius: 0 0 6px 6px;
+                 padding: 8px; line-height: 1.7; }}
+        .row {{ white-space: pre-wrap; word-wrap: break-word; padding: 1px 4px;
+                border-radius: 3px; min-height: 1.7em; }}
+        .row.eq {{ }}
+        .row.chg {{ background: #fff3cd; }}
+        .row.del {{ background: #ffd7d5; }}
+        .row.add {{ background: #ccffd8; }}
+        .row.blank {{ background: #f8f8f8; }}
+        .hl-del {{ background: #ffb4b0; padding: 1px 3px; border-radius: 3px; }}
+        .hl-add {{ background: #7eff9e; padding: 1px 3px; border-radius: 3px; }}
+    </style></head><body>
+    <div class="wrapper">
+        <div class="pane-col">
+            <div class="pane-label">Version A</div>
+            <div class="pane" id="paneL">{left_html}</div>
+        </div>
+        <div class="pane-col">
+            <div class="pane-label">Version B</div>
+            <div class="pane" id="paneR">{right_html}</div>
+        </div>
+    </div>
+    <script>
+        const L = document.getElementById('paneL');
+        const R = document.getElementById('paneR');
+        let syncing = false;
+        L.addEventListener('scroll', () => {{
+            if (syncing) return;
+            syncing = true;
+            R.scrollTop = L.scrollTop;
+            syncing = false;
+        }});
+        R.addEventListener('scroll', () => {{
+            if (syncing) return;
+            syncing = true;
+            L.scrollTop = R.scrollTop;
+            syncing = false;
+        }});
+    </script>
+    </body></html>
+    """
+
+
 # ─── Input Mode ───
 tab_paste, tab_file = st.tabs(["📋 Paste Text", "📁 Upload Files"])
 
@@ -218,20 +330,8 @@ if text_a or text_b:
             st.markdown(f'<div class="diff-container">{html}</div>', unsafe_allow_html=True)
 
         with view_tab2:
-            lines_a = text_a.splitlines()
-            lines_b = text_b.splitlines()
-            differ = difflib.HtmlDiff(wrapcolumn=80)
-            table_html = differ.make_table(
-                lines_a, lines_b,
-                fromdesc="Version A", todesc="Version B",
-                context=True, numlines=context_lines,
-            )
-            # Make the table wider and more readable
-            table_html = table_html.replace(
-                '<table class="diff"',
-                '<table class="diff" style="width:100%; font-size:13px;"',
-            )
-            st.markdown(table_html, unsafe_allow_html=True)
+            sbs_html = render_side_by_side(text_a, text_b)
+            components.html(sbs_html, height=550, scrolling=False)
 
         with view_tab3:
             unified = difflib.unified_diff(
