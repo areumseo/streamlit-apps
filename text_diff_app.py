@@ -43,7 +43,7 @@ st.title("🔍 Text Diff Tool")
 SUPPORTED_EXTENSIONS = ["txt", "csv", "json", "xml", "po", "xliff", "xlf", "md", "yaml", "yml", "properties", "strings", "resx", "ts", "js", "html", "htm", "pdf"]
 
 ext_display = ", ".join(f"`.{e}`" for e in SUPPORTED_EXTENSIONS)
-st.caption(f"Compare two texts and spot the differences — optimized for localization workflows.  \nSupported formats: {ext_display}")
+st.caption(f"Compare two versions of the same text to spot differences — ideal for proofreading and source text review.  \nSupported formats: {ext_display}")
 
 
 def extract_text(uploaded_file) -> str:
@@ -158,9 +158,9 @@ text_b = ""
 with tab_paste:
     col1, col2 = st.columns(2)
     with col1:
-        text_a_input = st.text_area("Original (Source)", height=250, placeholder="Paste original text here...")
+        text_a_input = st.text_area("Version A", height=250, placeholder="Paste first version here...")
     with col2:
-        text_b_input = st.text_area("Modified (Target)", height=250, placeholder="Paste modified text here...")
+        text_b_input = st.text_area("Version B", height=250, placeholder="Paste second version here...")
     if text_a_input or text_b_input:
         text_a = text_a_input
         text_b = text_b_input
@@ -168,9 +168,9 @@ with tab_paste:
 with tab_file:
     col1, col2 = st.columns(2)
     with col1:
-        file_a = st.file_uploader("Original File (Source)", type=SUPPORTED_EXTENSIONS, key="file_a")
+        file_a = st.file_uploader("File A", type=SUPPORTED_EXTENSIONS, key="file_a")
     with col2:
-        file_b = st.file_uploader("Modified File (Target)", type=SUPPORTED_EXTENSIONS, key="file_b")
+        file_b = st.file_uploader("File B", type=SUPPORTED_EXTENSIONS, key="file_b")
     if file_a or file_b:
         text_a = extract_text(file_a) if file_a else ""
         text_b = extract_text(file_b) if file_b else ""
@@ -223,7 +223,7 @@ if text_a or text_b:
             differ = difflib.HtmlDiff(wrapcolumn=80)
             table_html = differ.make_table(
                 lines_a, lines_b,
-                fromdesc="Original (Source)", todesc="Modified (Target)",
+                fromdesc="Version A", todesc="Version B",
                 context=True, numlines=context_lines,
             )
             # Make the table wider and more readable
@@ -237,8 +237,8 @@ if text_a or text_b:
             unified = difflib.unified_diff(
                 text_a.splitlines(keepends=True),
                 text_b.splitlines(keepends=True),
-                fromfile="Original (Source)",
-                tofile="Modified (Target)",
+                fromfile="Version A",
+                tofile="Version B",
                 n=context_lines,
             )
             unified_text = "".join(unified)
